@@ -84,6 +84,14 @@ def evolution(day: str, gate: str = DEFAULT_GATE):
             "runs": [{"publishTime": r.publishTime.strftime("%Y-%m-%dT%H:%MZ"), "mean_mw": r["mean"], "hours": int(r["count"]),
                       "known_at_gate": bool(r.publishTime <= cutoff)} for _, r in runs.iterrows()]}
 
+@app.get("/api/timeline")
+def timeline(gate: str = DEFAULT_GATE):
+    """Per delivery day: average forecast at the gate, average actual, mean absolute error."""
+    check(DAYS[0], gate)
+    j = cutoff_joined(gate)
+    g = j.groupby("day").agg(forecast=("forecast", "mean"), actual=("actual", "mean"), mae=("err", lambda e: e.abs().mean()), bias=("err", "mean")).round(0)
+    return [{"day": d, **{k: float(v) for k, v in r.items()}} for d, r in g.iterrows()]
+
 @app.get("/api/accuracy")
 def accuracy(gate: str = DEFAULT_GATE):
     check(DAYS[0], gate)
