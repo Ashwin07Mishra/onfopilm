@@ -14,11 +14,11 @@ const yGW = { ...axis, width: 74, tickFormatter: (v) => +(v / 1000).toFixed(1) +
 const still = { isAnimationActive: false };
 
 const Chart = ({ h = 280, children }) => <div style={{ height: h }}><ResponsiveContainer>{children}</ResponsiveContainer></div>;
-const Stat = ({ v, label, note }) => <div className="stat"><b>{v}</b><span>{label}</span>{note && <small>{note}</small>}</div>;
-const Card = ({ title, sub, children }) => <section className="card"><h2>{title}</h2>{sub && <p className="sub">{sub}</p>}{children}</section>;
+const Stat = ({ v, label, note }) => <div className="stat"><span>{label}</span><b>{v}</b>{note && <small>{note}</small>}</div>;
+const Card = ({ title, sub, children }) => <section className="panel"><h2>{title}</h2>{sub && <p className="sub">{sub}</p>}{children}</section>;
 
 function GateSelect({ gate, setGate }) {
-  return <label className="field">Decision deadline (day before delivery)
+  return <label className="field">Decision deadline
     <select value={gate} onChange={(e) => setGate(e.target.value)}>{GATES.map(([g, l]) => <option key={g} value={g}>{l}</option>)}</select></label>;
 }
 
@@ -52,14 +52,14 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
     </Card>
 
     <Card title={dayName(day, true)}>
-      <div className="ctl">
-        <button className="btn" disabled={i <= 0} onClick={() => setDay(days[i - 1])} aria-label="Previous day">←</button>
-        <button className="btn" disabled={i >= days.length - 1} onClick={() => setDay(days[i + 1])} aria-label="Next day">→</button>
+      <div className="toolbar">
+        <div className="seg"><button disabled={i <= 0} onClick={() => setDay(days[i - 1])} aria-label="Previous day"><Chev dir="l" /></button>
+          <button disabled={i >= days.length - 1} onClick={() => setDay(days[i + 1])} aria-label="Next day"><Chev dir="r" /></button></div>
         <GateSelect gate={gate} setGate={setGate} />
       </div>
       {!d || !rows ? <p className="sub">Loading</p> : <>
-        <p className="sub" style={{ marginTop: 14 }}>Forecast shown is the latest published before {gate} UK on {dayName(prevDay(day), true)}{last ? ` (issued ${fmtRun(last.publishTime)} UTC)` : ""}. Average {gw(avg(rows.map((r) => r.forecast)))}, from {gw(lo.forecast)} at {lo.t} to {gw(hi.forecast)} at {hi.t}.</p>
-        <div className="big">
+        <p className="sub" style={{ marginTop: 12 }}>Forecast shown is the latest published before {gate} UK on {dayName(prevDay(day), true)}{last ? ` (issued ${fmtRun(last.publishTime)} UTC)` : ""}. Average {gw(avg(rows.map((r) => r.forecast)))}, from {gw(lo.forecast)} at {lo.t} to {gw(hi.forecast)} at {hi.t}.</p>
+        <div className="strip">
           <Stat v={gw(avg(rows.map((r) => r.forecast)))} label="Forecast average" />
           <Stat v={gw(avg(rows.map((r) => r.actual)))} label="Actual average" />
           <Stat v={gw(d.day_stats.mae)} label="Average error this day" note={`January average: ${gw(o.mae)}`} />
@@ -80,7 +80,7 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
       <Chart h={240}><LineChart data={ev.runs.map((r) => ({ t: fmtRun(r.publishTime), mw: r.mean_mw, known: r.known_at_gate ? r.mean_mw : null }))} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
         <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} interval="preserveStartEnd" minTickGap={40} /><YAxis {...yGW} domain={["auto", "auto"]} />
         <Tooltip {...tip} formatter={(v, n) => [mw(v), n]} />
-        <Line dataKey="mw" name="After deadline" stroke="var(--mut)" strokeDasharray="4 4" dot={{ r: 3 }} {...still} />
+        <Line dataKey="mw" name="After deadline" stroke="var(--bar)" strokeDasharray="4 4" dot={{ r: 3, fill: "var(--panel)", stroke: "var(--bar)" }} {...still} />
         <Line dataKey="known" name="Available at deadline" stroke="var(--fc)" strokeWidth={3} dot={{ r: 4 }} {...still} />
         <ReferenceLine y={ev.actual_mean} stroke="var(--act)" strokeWidth={2} label={{ value: "Actual", fill: "var(--act)", position: "insideTopRight" }} />
         {last && <ReferenceLine x={fmtRun(last.publishTime)} stroke="var(--fg)" strokeDasharray="2 3" label={{ value: "Deadline", fill: "var(--fg)", position: "insideTopRight", fontSize: 12 }} />}
@@ -101,9 +101,9 @@ function Accuracy({ gate, setGate, acc, openDay }) {
   return (<>
     <h1>Forecast accuracy</h1>
     <p className="lead">Forecast available at the decision deadline compared with actual generation, for every delivery day in the window.</p>
-    <div className="ctl" style={{ marginBottom: 16 }}><GateSelect gate={gate} setGate={setGate} /></div>
+    <div className="toolbar" style={{ marginTop: 0, marginBottom: 16 }}><GateSelect gate={gate} setGate={setGate} /></div>
 
-    <div className="big">
+    <div className="strip">
       <Stat v={gw(o.mae)} label="Average error" note={`${o.wape_pct.toFixed(0)}% of actual output`} />
       <Stat v={(o.bias > 0 ? "+" : "") + gw(o.bias)} label="Bias" note={o.bias > 0 ? "forecast above actual" : "forecast below actual"} />
       <Stat v={gw(o.abs_p90)} label="90th percentile error" note="9 in 10 hours are within this" />
@@ -127,11 +127,11 @@ function Accuracy({ gate, setGate, acc, openDay }) {
     </Card>
 
     <Card title="Error by hour of day" sub="Average absolute error across all days.">
-      <Chart h={240}><BarChart data={hrs.map(([h, v]) => ({ h: hh(h), v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="h" {...axis} interval={2} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--fc)" {...still} /></BarChart></Chart>
+      <Chart h={240}><BarChart data={hrs.map(([h, v]) => ({ h: hh(h), v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="h" {...axis} interval={2} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--bar)" {...still} /></BarChart></Chart>
     </Card>
 
     <Card title="Error by forecast lead time" sub="Average absolute error of every forecast run, grouped by hours between publication and delivery.">
-      <Chart h={240}><BarChart data={lead.map(([k, v]) => ({ k: `${k}-${k + 6}h`, v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="k" {...axis} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--adj)" {...still} /></BarChart></Chart>
+      <Chart h={240}><BarChart data={lead.map(([k, v]) => ({ k: `${k}-${k + 6}h`, v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="k" {...axis} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--bar)" {...still} /></BarChart></Chart>
     </Card>
 
     <Card title="Distribution of errors" sub="Hours per error size, in GW (forecast minus actual). Right of zero: forecast above actual.">
@@ -178,6 +178,9 @@ function About({ q }) {
   </>);
 }
 
+const Chev = ({ dir }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={dir === "l" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} /></svg>;
+const Sun = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>;
+const Moon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>;
 const sys = () => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 function useTheme() {
   const [t, setT] = useState(() => { try { return localStorage.getItem("theme") || sys(); } catch { return sys(); } });
@@ -196,7 +199,7 @@ export default function App() {
   return (<>
     <header><div className="wrap top"><span className="brand"><img src="/favicon.svg" alt="" />Gridbricks</span>
       <nav>{nav.map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}</nav>
-      <button className="theme" onClick={flip} aria-label="Switch between light and dark mode">{theme === "dark" ? "Light mode" : "Dark mode"}</button></div></header>
+      <button className="theme" onClick={flip} aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"} title={theme === "dark" ? "Light theme" : "Dark theme"}>{theme === "dark" ? <Sun /> : <Moon />}</button></div></header>
     <main className="wrap">
       {tab === "about" ? <About q={q} /> : !ready ? <p className="sub" style={{ marginTop: 40 }}>Loading</p> :
         tab === "fc" ? <Forecast days={days} gate={gate} setGate={setGate} day={day} setDay={setDay} acc={acc} tl={tl} />
