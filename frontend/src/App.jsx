@@ -14,9 +14,10 @@ const yGW = { ...axis, width: 74, tickFormatter: (v) => +(v / 1000).toFixed(1) +
 const still = { isAnimationActive: false };
 
 const Chart = ({ h = 280, children }) => <div style={{ height: h }}><ResponsiveContainer>{children}</ResponsiveContainer></div>;
-const Stat = ({ v, label, note }) => <div className="stat"><span>{label}</span><b>{v}</b>{note && <small>{note}</small>}</div>;
+const lv = (x, good, bad) => (x <= good ? "good" : x >= bad ? "bad" : "warn");
+const Stat = ({ v, label, note, tone }) => <div className="stat"><span>{label}</span><b className={tone}>{v}</b>{note && <small>{note}</small>}</div>;
 const Banner = ({ headline, stats }) => <section className="banner"><div><small>Key takeaway</small><h2>{headline}</h2></div>
-  <div className="bstats">{stats.map(([v, l]) => <div key={l}><b>{v}</b><span>{l}</span></div>)}</div></section>;
+  <div className="bstats">{stats.map(([v, l, t]) => <div key={l}><b className={t}>{v}</b><span>{l}</span></div>)}</div></section>;
 const Card = ({ title, sub, children }) => <section className="panel"><h2>{title}</h2>{sub && <p className="sub">{sub}</p>}{children}</section>;
 
 function GateSelect({ gate, setGate }) {
@@ -42,7 +43,9 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
   const dayHeadline = d && rows ? (Math.abs(bias) < 0.02 * meanA ? "The forecast available at the deadline was close to actual wind on this day."
     : bias > 0 ? `The forecast overstated wind by ${gw(bias)} (${(100 * bias / meanA).toFixed(0)}%) on this day, which would have meant buying too little backup power.`
       : `The forecast understated wind by ${gw(-bias)} (${(100 * -bias / meanA).toFixed(0)}%) on this day, which would have meant buying more backup power than needed.`) : "";
-  const dayStats = d && rows ? [[`${errs.filter((x) => x.e > 0).length} of ${errs.length}`, "hours forecast above actual"], [gw(d.day_stats.mae), `average error (${d.day_stats.mae > o.mae ? "above" : "below"} the ${gw(o.mae)} January average)`], [worst ? gw(Math.abs(worst.e)) : "-", `largest hourly miss${worst ? ` (${worst.t})` : ""}`]] : [];
+  const maeTone = d && lv(d.day_stats.mae / o.mae, 0.8, 1.2), biasTone = rows && lv(100 * Math.abs(bias) / meanA, 3, 8);
+  const nOver = errs.filter((x) => x.e > 0).length;
+  const dayStats = d && rows ? [[`${nOver} of ${errs.length}`, "hours forecast above actual", lv(100 * nOver / errs.length, 40, 60)], [gw(d.day_stats.mae), `average error (${d.day_stats.mae > o.mae ? "above" : "below"} the ${gw(o.mae)} January average)`, maeTone], [worst ? gw(Math.abs(worst.e)) : "-", `largest hourly miss${worst ? ` (${worst.t})` : ""}`, worst ? lv(100 * Math.abs(worst.e) / meanA, 25, 50) : undefined]] : [];
   const lo = rows && rows.reduce((a, r) => (r.forecast < a.forecast ? r : a)), hi = rows && rows.reduce((a, r) => (r.forecast > a.forecast ? r : a));
 
   return (<>
@@ -72,8 +75,8 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
         <div className="strip">
           <Stat v={gw(avg(rows.map((r) => r.forecast)))} label="Forecast average" />
           <Stat v={gw(avg(rows.map((r) => r.actual)))} label="Actual average" />
-          <Stat v={gw(d.day_stats.mae)} label="Average error this day" note={`January average: ${gw(o.mae)}`} />
-          <Stat v={(d.day_stats.bias > 0 ? "+" : "") + gw(d.day_stats.bias)} label="Bias this day" note={d.day_stats.bias > 0 ? "forecast above actual" : "forecast below actual"} />
+          <Stat v={gw(d.day_stats.mae)} label="Average error this day" note={`January average: ${gw(o.mae)}`} tone={maeTone} />
+          <Stat v={(d.day_stats.bias > 0 ? "+" : "") + gw(d.day_stats.bias)} label="Bias this day" note={d.day_stats.bias > 0 ? "forecast above actual" : "forecast below actual"} tone={biasTone} />
         </div>
         <Chart h={300}><ComposedChart data={rows} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} interval={2} /><YAxis {...yGW} domain={[0, "auto"]} />
@@ -103,6 +106,7 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
 /* ---------- Accuracy ---------- */
 function Accuracy({ gate, setGate, acc, openDay }) {
   const o = acc.overall, bd = acc.by_day, daysOver = bd.filter((b) => b.bias > 0).length, meanActual = o.mae / (o.wape_pct / 100);
+  const tMae = lv(o.wape_pct, 10, 15), tBias = lv(100 * Math.abs(o.bias) / meanActual, 3, 8), tP90 = lv(100 * o.abs_p90 / meanActual, 20, 35), tDays = lv(100 * daysOver / bd.length, 40, 60);
   const sorted = [...bd].sort((a, b) => b.mae - a.mae), worst = sorted.slice(0, 3), best = sorted[sorted.length - 1];
   const hrs = Object.entries(acc.by_hour), hMax = hrs.reduce((a, b) => (b[1] > a[1] ? b : a)), hMin = hrs.reduce((a, b) => (b[1] < a[1] ? b : a));
   const hh = (h) => String(h).padStart(2, "0") + ":00";
@@ -114,11 +118,11 @@ function Accuracy({ gate, setGate, acc, openDay }) {
     <div className="toolbar" style={{ marginTop: 0, marginBottom: 16 }}><GateSelect gate={gate} setGate={setGate} /></div>
 
     <Banner headline={`Across January the forecast available at the deadline overstated wind by ${(100 * o.bias / meanActual).toFixed(0)}%, about ${Math.round(o.bias * o.n / 1000).toLocaleString()} GWh that never arrived.`}
-      stats={[[`${daysOver} of ${bd.length}`, "delivery days forecast above actual"], [`${o.wape_pct.toFixed(0)}%`, "average error as a share of output"], [gw(o.abs_p90), "9 in 10 hours are within this error"]]} />
+      stats={[[`${daysOver} of ${bd.length}`, "delivery days forecast above actual", tDays], [`${o.wape_pct.toFixed(0)}%`, "average error as a share of output", tMae], [gw(o.abs_p90), "9 in 10 hours are within this error", tP90]]} />
     <div className="strip">
-      <Stat v={gw(o.mae)} label="Average error" note={`${o.wape_pct.toFixed(0)}% of actual output`} />
-      <Stat v={(o.bias > 0 ? "+" : "") + gw(o.bias)} label="Bias" note={o.bias > 0 ? "forecast above actual: less backup power than needed would be bought" : "forecast below actual: more backup power than needed would be bought"} />
-      <Stat v={gw(o.abs_p90)} label="90th percentile error" note="9 in 10 hours are within this" />
+      <Stat v={gw(o.mae)} label="Average error" note={`${o.wape_pct.toFixed(0)}% of actual output`} tone={tMae} />
+      <Stat v={(o.bias > 0 ? "+" : "") + gw(o.bias)} label="Bias" note={o.bias > 0 ? "forecast above actual: less backup power than needed would be bought" : "forecast below actual: more backup power than needed would be bought"} tone={tBias} />
+      <Stat v={gw(o.abs_p90)} label="90th percentile error" note="9 in 10 hours are within this" tone={tP90} />
       <Stat v={o.n.toLocaleString()} label="Hours compared" note={`worst single hour ${gw(o.max_abs)}`} />
     </div>
 
@@ -182,6 +186,16 @@ function About({ q }) {
         <dt>Bias</dt><dd>Mean of the signed errors. Positive: forecast above actual.</dd>
         <dt>90th percentile error</dt><dd>Absolute error that 9 in 10 hours stay within.</dd>
         <dt>Expected range</dt><dd>Band between the 10th and 90th percentile of January's errors, applied around a forecast.</dd>
+      </dl>
+    </Card>
+    <Card title="Colour coding">
+      <p>Green, amber and red on key figures compare a number with average wind output over the period (or with the January average for a single day). They are a reading aid, not a statistical test.</p>
+      <dl>
+        <dt>Average error</dt><dd>Green up to 10% of output, red from 15%. For a single day: green if 20% or more below the January average, red if 20% or more above.</dd>
+        <dt>Bias</dt><dd>Green within 3% of output, red from 8%. A forecast above actual means less backup power than needed would be bought; below means more.</dd>
+        <dt>90th percentile error</dt><dd>Green up to 20% of output, red from 35%.</dd>
+        <dt>Days or hours above actual</dt><dd>Green if 40% or fewer, red if 60% or more.</dd>
+        <dt>Largest hourly miss</dt><dd>Green up to 25% of the day's output, red from 50%.</dd>
       </dl>
     </Card>
     {q && <Card title="Data checks">
