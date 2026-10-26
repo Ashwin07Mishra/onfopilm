@@ -8,8 +8,12 @@ const dayName = (iso, long) => new Date(iso + "T12:00:00Z").toLocaleDateString("
 const prevDay = (iso) => new Date(Date.parse(iso + "T12:00:00Z") - 864e5).toISOString().slice(0, 10);
 const avg = (a) => a.reduce((s, x) => s + x, 0) / a.length;
 const GATES = [["09:20", "09:20 UK (day-ahead auction close)"], ["00:00", "00:00 UK (start of the day before)"]];
-const tip = { contentStyle: { background: "var(--card)", border: "1px solid var(--line)", borderRadius: 8 } };
-const axis = { stroke: "var(--mut)", fontSize: 13 };
+const tip = { contentStyle: { background: "var(--panel)", border: "1px solid var(--line2)", borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,.12)", fontSize: 13 } };
+const axis = { tick: { fill: "var(--mut)", fontSize: 12 }, axisLine: { stroke: "var(--line2)" }, tickLine: false, tickMargin: 8 };
+const narrow = () => typeof window !== "undefined" && window.innerWidth < 560;
+const hourTicks = () => Array.from({ length: narrow() ? 4 : 8 }, (_, i) => String(i * (narrow() ? 6 : 3)).padStart(2, "0") + ":00");
+const dayTicks = () => { const step = narrow() ? 4 : 2, out = []; for (let d = 2; d <= 30; d += step) out.push(`2026-01-${String(d).padStart(2, "0")}`); if (!narrow()) out.push("2026-02-01"); return out; };
+const dayTick = (x) => (x > "2026-01-31" ? "1 Feb" : +x.slice(8));
 const yGW = { ...axis, width: 74, tickFormatter: (v) => +(v / 1000).toFixed(1) + " GW" };
 const still = { isAnimationActive: false };
 
@@ -35,6 +39,9 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
     band: [Math.max(0, r.forecast - o.p90), Math.max(0, r.forecast - o.p10)],
   })), [d, o]);
   const known = ev ? ev.runs.filter((r) => r.known_at_gate) : [];
+  const evv = ev ? [...ev.runs.map((r) => r.mean_mw), ev.actual_mean] : [];
+  const evLo = Math.floor(Math.min(...evv) / 1000), evHi = Math.ceil(Math.max(...evv) / 1000), evStep = evHi - evLo > 6 ? 2 : 1;
+  const evTicks = ev ? Array.from({ length: Math.floor((evHi - evLo) / evStep) + 1 }, (_, i) => (evLo + i * evStep) * 1000) : [];
   const last = known[known.length - 1];
   const fmtRun = (s) => new Date(s.replace("Z", ":00Z")).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
   const errs = rows ? rows.map((r) => ({ t: r.t, e: r.forecast - r.actual })) : [];
@@ -53,8 +60,8 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
     <p className="lead">GB national wind generation, forecast versus actual, for each delivery day of January 2026.</p>
 
     <Card title="January timeline" sub="Daily average wind per delivery day. Select a day on the chart to inspect it.">
-      <Chart h={240}><ComposedChart data={tl} onClick={(e) => e && e.activeLabel && setDay(e.activeLabel)} margin={{ top: 8, right: 8, left: 0, bottom: 0 }} style={{ cursor: "pointer" }}>
-        <CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="day" {...axis} tickFormatter={(x) => +x.slice(8)} interval={1} /><YAxis {...yGW} />
+      <Chart h={240}><ComposedChart data={tl} onClick={(e) => e && e.activeLabel && setDay(e.activeLabel)} margin={{ top: 8, right: 26, left: 0, bottom: 0 }} style={{ cursor: "pointer" }}>
+        <CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="day" {...axis} tickFormatter={dayTick} ticks={dayTicks()} interval={0} /><YAxis {...yGW} />
         <Tooltip {...tip} labelFormatter={(x) => dayName(x, true)} formatter={(v, n) => [mw(v), n]} />
         <Line dataKey="forecast" name="Forecast at deadline" stroke="var(--fc)" strokeWidth={2.5} dot={{ r: 3 }} {...still} />
         <Line dataKey="actual" name="Actual" stroke="var(--act)" strokeWidth={2.5} dot={{ r: 3 }} {...still} />
@@ -68,6 +75,7 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
         <div className="seg"><button disabled={i <= 0} onClick={() => setDay(days[i - 1])} aria-label="Previous day"><Chev dir="l" /></button>
           <button disabled={i >= days.length - 1} onClick={() => setDay(days[i + 1])} aria-label="Next day"><Chev dir="r" /></button></div>
         <GateSelect gate={gate} setGate={setGate} />
+        <a className="dl" href={`/api/export/${day}?gate=${gate}`} download={`gridbricks-${day}-gate-${gate.replace(":", "")}.csv`}><Down />Download CSV</a>
       </div>
       {!d || !rows ? <p className="sub">Loading</p> : <>
         <p className="sub" style={{ marginTop: 12 }}>Forecast shown is the latest published before {gate} UK on {dayName(prevDay(day), true)}{last ? ` (issued ${fmtRun(last.publishTime)} UTC)` : ""}. Average {gw(avg(rows.map((r) => r.forecast)))}, from {gw(lo.forecast)} at {lo.t} to {gw(hi.forecast)} at {hi.t}.</p>
@@ -79,7 +87,7 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
           <Stat v={(d.day_stats.bias > 0 ? "+" : "") + gw(d.day_stats.bias)} label="Bias this day" note={d.day_stats.bias > 0 ? "forecast above actual" : "forecast below actual"} tone={biasTone} />
         </div>
         <Chart h={300}><ComposedChart data={rows} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} interval={2} /><YAxis {...yGW} domain={[0, "auto"]} />
+          <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} ticks={hourTicks()} interval={0} /><YAxis {...yGW} domain={[0, "auto"]} />
           <Tooltip {...tip} formatter={(v, n) => [Array.isArray(v) ? `${mw(v[0])} to ${mw(v[1])}` : mw(v), n]} />
           <Area dataKey="band" name="Expected range" stroke="none" fill="var(--fc)" fillOpacity={0.14} {...still} />
           <Line dataKey="forecast" name="Forecast" stroke="var(--fc)" strokeWidth={3} dot={false} {...still} />
@@ -91,7 +99,7 @@ function Forecast({ days, gate, setGate, day, setDay, acc, tl }) {
 
     {ev && <Card title="Forecast updates for this day" sub={`Each point is one forecast run, showing its average for ${dayName(day)}. Runs after the deadline were not available for the decision.`}>
       <Chart h={240}><LineChart data={ev.runs.map((r) => ({ t: fmtRun(r.publishTime), mw: r.mean_mw, known: r.known_at_gate ? r.mean_mw : null }))} margin={{ top: 14, right: 8, left: 0, bottom: 0 }}>
-        <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} interval="preserveStartEnd" minTickGap={40} /><YAxis {...yGW} domain={["auto", "auto"]} />
+        <CartesianGrid stroke="var(--line)" /><XAxis dataKey="t" {...axis} interval="preserveStartEnd" minTickGap={40} /><YAxis {...yGW} domain={[evLo * 1000, evHi * 1000]} ticks={evTicks} />
         <Tooltip {...tip} formatter={(v, n) => [mw(v), n]} />
         <Line dataKey="mw" name="After deadline" stroke="var(--bar)" strokeDasharray="4 4" dot={{ r: 3, fill: "var(--panel)", stroke: "var(--bar)" }} {...still} />
         <Line dataKey="known" name="Available at deadline" stroke="var(--fc)" strokeWidth={3} dot={{ r: 4 }} {...still} />
@@ -136,14 +144,14 @@ function Accuracy({ gate, setGate, acc, openDay }) {
     </Card>
 
     <Card title="Error by day" sub="Average absolute error per delivery day. Select a bar to open that day.">
-      <Chart><BarChart data={bd} margin={{ left: 0, right: 8 }} style={{ cursor: "pointer" }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="day" {...axis} tickFormatter={(x) => +x.slice(8)} interval={1} /><YAxis {...yGW} />
+      <Chart><BarChart data={bd} margin={{ left: 0, right: 26 }} style={{ cursor: "pointer" }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="day" {...axis} tickFormatter={dayTick} ticks={dayTicks()} interval={0} /><YAxis {...yGW} />
         <Tooltip {...tip} labelFormatter={(x) => dayName(x, true)} formatter={(v, n, p) => [`${mw(v)} (${p.payload.bias > 0 ? "forecast above actual" : "forecast below actual"} by ${mw(Math.abs(p.payload.bias))} on average)`, "Average error"]} />
         <Bar dataKey="mae" onClick={(p) => openDay(p.day)} {...still}>{bd.map((b) => <Cell key={b.day} fill={b.bias > 0 ? "var(--fc)" : "var(--act)"} />)}</Bar></BarChart></Chart>
       <div className="legend"><span><i style={{ background: "var(--fc)" }} />Forecast above actual on average</span><span><i style={{ background: "var(--act)" }} />Forecast below actual on average</span></div>
     </Card>
 
     <Card title="Error by hour of day" sub="Average absolute error across all days.">
-      <Chart h={240}><BarChart data={hrs.map(([h, v]) => ({ h: hh(h), v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="h" {...axis} interval={2} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--bar)" {...still} /></BarChart></Chart>
+      <Chart h={240}><BarChart data={hrs.map(([h, v]) => ({ h: hh(h), v }))} margin={{ left: 0, right: 8 }}><CartesianGrid stroke="var(--line)" vertical={false} /><XAxis dataKey="h" {...axis} ticks={hourTicks()} interval={0} /><YAxis {...yGW} /><Tooltip {...tip} formatter={(v) => [mw(v), "Average error"]} /><Bar dataKey="v" fill="var(--bar)" {...still} /></BarChart></Chart>
     </Card>
 
     <Card title="Error by forecast lead time" sub="Average absolute error of every forecast run, grouped by hours between publication and delivery.">
@@ -204,14 +212,15 @@ function About({ q }) {
   </>);
 }
 
+const Down = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13h10" /></svg>;
 const Chev = ({ dir }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={dir === "l" ? "M10 3 5 8l5 5" : "M6 3l5 5-5 5"} /></svg>;
 const Sun = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>;
 const Moon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" /></svg>;
-const sys = () => (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
 function useTheme() {
-  const [t, setT] = useState(() => { try { return localStorage.getItem("theme") || sys(); } catch { return sys(); } });
-  useEffect(() => { document.documentElement.dataset.theme = t; try { localStorage.setItem("theme", t); } catch {} }, [t]);
-  return [t, () => setT(t === "dark" ? "light" : "dark")];
+  const [t, setT] = useState(() => { try { return localStorage.getItem("gb-theme") || "light"; } catch { return "light"; } });
+  useEffect(() => { document.documentElement.dataset.theme = t; }, [t]);
+  const toggle = () => { const n = t === "dark" ? "light" : "dark"; setT(n); try { localStorage.setItem("gb-theme", n); } catch {} };
+  return [t, toggle];
 }
 
 export default function App() {

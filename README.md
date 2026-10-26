@@ -5,7 +5,7 @@ A web app for a UK energy supplier's day-ahead buying desk. It shows (1) the lat
 **Live app:** https://gridbricks-snowy.vercel.app
 
 ## Pages
-- **Forecast:** January timeline (daily average forecast vs actual, select a day), then the selected day hour by hour with the forecast available at the decision deadline, actual generation, the expected error range, and the forecast updates issued before and after the deadline.
+- **Forecast:** January timeline (daily average forecast vs actual, select a day), then the selected day hour by hour with the forecast available at the decision deadline, actual generation, the expected error range, and the forecast updates issued before and after the deadline. The selected day can be downloaded as CSV.
 - **Accuracy:** average error, bias, 90th percentile error, plus error by day (select a bar to open that day), by hour of day, by forecast lead time, and the error distribution.
 - **About:** data sources, method, terms, data-quality checks.
 
@@ -20,7 +20,7 @@ backend/
 frontend/           Vite + React + Recharts (src/App.jsx has all three pages, src/style.css the styling)
 data/               JSON snapshot of the Elexon data (actuals.json, forecasts.json), so the app never calls Elexon at runtime
 app.py              Vercel entry point (imports backend/main.py)
-public/             pre-built front end served by Vercel
+public/             front-end build output on Vercel (rebuilt from frontend/ on every deploy)
 Dockerfile, docker-compose.yml, vercel.json, requirements.txt
 ```
 
